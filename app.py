@@ -42,7 +42,6 @@ def processa_file(df, C_nom):
 
     n_cicli = df.shape[0]
     soglia_scarica_prof = 0.8 * C_nom
-
     n_scariche_prof = (df["Ah_Disb"] >= soglia_scarica_prof).sum()
     perc_scariche_prof = n_scariche_prof / n_cicli * 100
 
@@ -75,7 +74,7 @@ def processa_file(df, C_nom):
         "Cicli con Tmax > 55 °C": f"{n_Tmax_gt55} ({(n_Tmax_gt55/n_cicli*100):.1f} %)",
         "Tmax medio": f"{tmax_medio:.1f} °C"
     }
-    return df, report
+    return df, report, perc_scariche_prof
 
 # ===========================
 # Main
@@ -88,7 +87,7 @@ if uploaded_file is not None:
     except Exception as e:
         st.error(f"Errore nella lettura del file: {e}")
     else:
-        df_elab, report = processa_file(df, targa_batteria)
+        df_elab, report, perc_scariche = processa_file(df, targa_batteria)
 
         # Info header
         st.subheader("Dati Cliente e Carrello")
@@ -107,6 +106,8 @@ if uploaded_file is not None:
         st.subheader("2. Consigli Operativi")
         st.write("• Verificare le cariche incomplete per ridurre la solfatazione.")
         st.write("• Monitorare attentamente i cicli in cui la temperatura si avvicina alla soglia.")
+        if perc_scariche > 5:
+            st.write("• Limitare le scariche profonde (>80% DoD) riprogrammando i turni o installando limitatori di scarica, per preservare la durata della batteria.")
         st.markdown("---")
 
         # Grafico 1: barre con spunte
@@ -118,8 +119,9 @@ if uploaded_file is not None:
 
         fig1, ax1 = plt.subplots(figsize=(10, 5))
         width = 0.4
-        ax1.bar(indices - width/2, ah_chg, width=width, label="Ah caricati", color="gold")
-        ax1.bar(indices + width/2, ah_disb, width=width, label="Ah scaricati", color="orange")
+        # Due colori distinti per le barre
+        ax1.bar(indices - width/2, ah_chg, width=width, label="Ah caricati", color="#1f77b4")
+        ax1.bar(indices + width/2, ah_disb, width=width, label="Ah scaricati", color="#d62728")
 
         # Spunte ✓/✗ in alto
         ymax = max(max(ah_chg), max(ah_disb)) * 1.05
@@ -129,7 +131,13 @@ if uploaded_file is not None:
             ax1.text(x, ymax, symbol, ha='center', va='bottom',
                      fontsize=12, fontweight='bold', color=color)
 
-        ax1.set_xticks(indices)
+        # Imposta i ticks dei cicli ogni 20
+        step = 20
+        ticks = list(range(1, len(indices)+1, step))
+        if len(indices) not in ticks:
+            ticks.append(len(indices))
+        ax1.set_xticks(ticks)
+        ax1.set_xticklabels([str(t) for t in ticks])
         ax1.set_xlabel("Numero Ciclo")
         ax1.set_ylabel("Ah")
         ax1.set_ylim(0, ymax * 1.1)
@@ -142,6 +150,9 @@ if uploaded_file is not None:
         fig2, ax2 = plt.subplots(figsize=(10, 5))
         ax2.plot(indices, df_elab["Tmax_C"], label="Tmax (°C)",
                  color="orange", marker="^", linestyle="-", markersize=5)
+        # Ticks ogni 20 per coerenza
+        ax2.set_xticks(ticks)
+        ax2.set_xticklabels([str(t) for t in ticks])
         ax2.axhline(55, color="red", linestyle="--", linewidth=1.2, label="Soglia 55 °C")
         ax2.set_xlabel("Numero Ciclo")
         ax2.set_ylabel("Temperatura (°C)")
